@@ -18,11 +18,11 @@
             <p class="subtitle">ระบบลงเวลาเข้างานด้วยใบหน้า</p>
             <div class="input-group">
                 <label>รหัสพนักงาน</label>
-                <input type="text" id="loginUsername" placeholder="EMPxxx">
+                <input type="text" id="loginUsername" >
             </div>
             <div class="input-group">
                 <label>รหัสผ่าน</label>
-                <input type="password" id="loginPassword" placeholder="••••••">
+                <input type="password" id="loginPassword" >
             </div>
             <button class="btn btn-primary" onclick="handleLogin()">เข้าสู่ระบบ</button>
             <button class="btn btn-outline" onclick="goToPage('page-register-data')">ลงทะเบียนพนักงานใหม่</button>
@@ -33,19 +33,19 @@
             <p class="subtitle">กรอกข้อมูลส่วนตัว</p>
             <div class="input-group">
                 <label>ชื่อจริง</label>
-                <input type="text" id="regFirstName" placeholder="สมชาย">
+                <input type="text" id="regFirstName" >
             </div>
             <div class="input-group">
                 <label>นามสกุล</label>
-                <input type="text" id="regLastName" placeholder="รักดี">
+                <input type="text" id="regLastName" >
             </div>
             <div class="input-group">
                 <label>รหัสพนักงาน (ใช้ Login)</label>
-                <input type="text" id="regUsername" placeholder="EMP001">
+                <input type="text" id="regUsername" >
             </div>
             <div class="input-group">
                 <label>รหัสผ่าน</label>
-                <input type="password" id="regPassword" placeholder="••••••">
+                <input type="password" id="regPassword" >
             </div>
             <button class="btn btn-primary" onclick="validateAndGoToScan()"> บันทึกใบหน้า</button>
             <button class="btn btn-outline" onclick="goToPage('page-login')">ย้อนกลับ</button>
@@ -151,3 +151,4 @@
 
 </body>
 </html>
+
