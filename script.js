@@ -59,7 +59,24 @@ function closePopup() {
 function goToPage(pageId) {
     pages.forEach(p => document.getElementById(p).classList.remove('active'))
     document.getElementById(pageId).classList.add('active')
+    
     stopCamera() 
+
+    if (pageId === 'page-login') {
+        document.getElementById('loginUsername').value = ''
+        document.getElementById('loginPassword').value = ''
+        document.getElementById('regFirstName').value = ''
+        document.getElementById('regLastName').value = ''
+        document.getElementById('regUsername').value = ''
+        document.getElementById('regPassword').value = ''
+    }
+
+    if (pageId === 'page-register-data') {
+        document.getElementById('regFirstName').value = ''
+        document.getElementById('regLastName').value = ''
+        document.getElementById('regUsername').value = ''
+        document.getElementById('regPassword').value = ''
+    }
 }
 
 function stopCamera() {
@@ -194,7 +211,16 @@ async function startFaceScanProcess() {
 function finishRegistration() {
     clearInterval(scanInterval)
     isScanning = false
-    
+    const duplicateUser = checkDuplicateFace(collectedDescriptors)
+
+    if (duplicateUser) {
+        showPopup('error', 'ลงทะเบียนไม่ผ่าน', `ใบหน้านี้มีอยู่ในระบบแล้ว!\n(ตรงกับรหัสพนักงาน: ${duplicateUser})`)        
+        collectedDescriptors = []
+        scanProgress = 0
+        goToPage('page-register-data')
+        return 
+    }
+
     const users = JSON.parse(localStorage.getItem('users_db')) || []
     const finalUser = { ...tempUserData, descriptors: collectedDescriptors }
     users.push(finalUser)
@@ -346,3 +372,27 @@ setInterval(() => {
     const el = document.getElementById('current-time')
     if(el) el.innerText = new Date().toLocaleTimeString('th-TH')
 }, 1000)
+
+function checkDuplicateFace(newFaceDescriptors) {
+    const users = JSON.parse(localStorage.getItem('users_db')) || []
+    
+    if (users.length === 0) return null
+
+    const labeledDescriptors = users.map(user => {
+        const descriptorsArray = user.descriptors.map(d => new Float32Array(d))
+        return new faceapi.LabeledFaceDescriptors(user.username, descriptorsArray)
+    })
+    
+    const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.6) 
+
+    for (const descriptor of newFaceDescriptors) {
+        const floatDescriptor = new Float32Array(descriptor)
+        const bestMatch = faceMatcher.findBestMatch(floatDescriptor)
+
+        if (bestMatch.label !== 'unknown') {
+            return bestMatch.label 
+        }
+    }
+
+    return null 
+}
