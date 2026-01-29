@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Attendance : Pro System</title>
+    <link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;700&family=Prompt:wght@300;400;600&display=swap" rel="stylesheet">
+    <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+    <script defer src="script.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <div class="main-card">
+        
+        <div id="page-login" class="page active">
+            <h2>SMART ATTENDANCE</h2>
+            <p class="subtitle">ระบบลงเวลาเข้างานด้วยใบหน้า</p>
+            <div class="input-group">
+                <label>รหัสพนักงาน</label>
+                <input type="text" id="loginUsername" placeholder="EMPxxx">
+            </div>
+            <div class="input-group">
+                <label>รหัสผ่าน</label>
+                <input type="password" id="loginPassword" placeholder="••••••">
+            </div>
+            <button class="btn btn-primary" onclick="handleLogin()">เข้าสู่ระบบ</button>
+            <button class="btn btn-outline" onclick="goToPage('page-register-data')">ลงทะเบียนพนักงานใหม่</button>
+        </div>
+
+        <div id="page-register-data" class="page">
+            <h2>ลงทะเบียนใหม่</h2>
+            <p class="subtitle">กรอกข้อมูลส่วนตัว</p>
+            <div class="input-group">
+                <label>ชื่อจริง</label>
+                <input type="text" id="regFirstName" placeholder="สมชาย">
+            </div>
+            <div class="input-group">
+                <label>นามสกุล</label>
+                <input type="text" id="regLastName" placeholder="รักดี">
+            </div>
+            <div class="input-group">
+                <label>รหัสพนักงาน (ใช้ Login)</label>
+                <input type="text" id="regUsername" placeholder="EMP001">
+            </div>
+            <div class="input-group">
+                <label>รหัสผ่าน</label>
+                <input type="password" id="regPassword" placeholder="••••••">
+            </div>
+            <button class="btn btn-primary" onclick="validateAndGoToScan()">ถัดไป: สแกนใบหน้า</button>
+            <button class="btn btn-outline" onclick="goToPage('page-login')">ย้อนกลับ</button>
+        </div>
+
+        <div id="page-register-scan" class="page">
+            <h2>บันทึกใบหน้า</h2>
+            <p class="subtitle">ระบบจะเก็บภาพหลายมุม (0-100%)</p>
+            
+            <div id="video-wrapper">
+                <video id="video-scan" autoplay muted playsinline></video>
+                <div id="scan-ui" class="scan-overlay hidden">
+                    <div class="scanner-ring"></div>
+                    <div class="scan-text" id="scan-percent">0%</div>
+                </div>
+            </div>
+
+            <p id="ai-loading-status" style="color:#facc15; font-size:14px; margin-bottom:10px;">⏳ กำลังโหลดสมอง AI...</p>
+
+            <button id="btn-start-reg-scan" class="btn btn-primary" onclick="startFaceScanProcess()" disabled>รอโหลด AI...</button>
+            <button class="btn btn-outline" onclick="stopScanAndBack()">ยกเลิก</button>
+            <p style="font-size:12px; color:#666; margin-top:10px;">*ระบบจะบันทึกพิกัดปัจจุบันเป็น 'ที่ทำงาน' อัตโนมัติ</p>
+        </div>
+
+        <div id="page-dashboard" class="page">
+            <h2 id="welcome-msg">สวัสดี</h2>
+            <p class="subtitle" id="current-time">00:00:00</p>
+            
+            <p style="color:#94a3b8; font-size:14px; margin-bottom:10px;">เลือกรายการที่ต้องการบันทึก:</p>
+            
+            <div class="grid-menu">
+                <button class="btn-menu" onclick="openScanner('เข้างาน (เช้า)')">
+                    <span>☀️</span> เข้าเช้า
+                </button>
+                <button class="btn-menu" onclick="openScanner('พักเที่ยง')">
+                    <span>🍛</span> พักเที่ยง
+                </button>
+                <button class="btn-menu" onclick="openScanner('เข้างาน (บ่าย)')">
+                    <span>🕑</span> เข้าบ่าย
+                </button>
+                <button class="btn-menu" onclick="openScanner('เลิกงาน')">
+                    <span>🏠</span> เลิกงาน
+                </button>
+            </div>
+
+            <button class="btn btn-primary" onclick="openHistory()">📋 ดูประวัติการเข้างาน</button>
+            <button class="btn btn-outline" style="border-color:#ef4444; color:#ef4444;" onclick="handleLogout()">ออกจากระบบ</button>
+        </div>
+
+    </div>
+
+    <div id="modal-scanner" class="modal">
+        <div class="modal-content">
+            <h2 id="scan-title">ยืนยันตัวตน</h2>
+            <p class="subtitle">กดเปิดกล้องเพื่อยืนยัน</p>
+            
+            <div style="position: relative; width: 100%; height: 300px; background: #000; border-radius: 12px; overflow: hidden; margin-bottom: 20px; border: 2px solid #334155;">
+                
+                <div id="camera-placeholder" style="width:100%; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#0f172a;">
+                    <div style="font-size:40px; margin-bottom:10px;">📷</div>
+                    <button class="btn btn-primary" style="width:auto; padding:10px 20px;" onclick="startAuthCamera()">เปิดกล้อง</button>
+                </div>
+
+                <video id="video-auth" class="hidden" style="width:100%; height:100%; object-fit:cover;" autoplay muted playsinline></video>
+                <canvas id="canvas-auth" style="position:absolute; top:0; left:0;"></canvas>
+            </div>
+
+            <button id="btn-scan-confirm" class="btn btn-primary hidden" onclick="performCheckIn()">📸 สแกนใบหน้ายืนยัน</button>
+            <button class="btn btn-outline" onclick="closeScanner()">ยกเลิก</button>
+        </div>
+    </div>
+
+    <div id="modal-history" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <h2>ประวัติการเข้างาน</h2>
+            <p class="subtitle">เฉพาะบัญชีของคุณ</p>
+            
+            <div class="history-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>เวลา</th>
+                            <th>รายการ</th>
+                            <th>สถานะ</th>
+                        </tr>
+                    </thead>
+                    <tbody id="history-body"></tbody>
+                </table>
+            </div>
+
+            <button class="btn btn-outline" onclick="document.getElementById('modal-history').classList.remove('active')">ปิดหน้าต่าง</button>
+        </div>
+    </div>
+
+    <div id="custom-popup" class="popup-container">
+        <div class="popup-content-box">
+            <span id="popup-icon" class="popup-icon"></span>
+            <h3 id="popup-title">Title</h3>
+            <p id="popup-message" style="color:#cbd5e1; margin-top:10px;">Message</p>
+            <button class="btn btn-primary" style="margin-top:20px;" onclick="closePopup()">ตกลง</button>
+        </div>
+    </div>
+
+</body>
+</html>
