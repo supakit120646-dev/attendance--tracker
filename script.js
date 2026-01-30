@@ -1,4 +1,4 @@
-
+// --- System Variables ---
 const pages = ['page-login', 'page-register-data', 'page-register-scan', 'page-dashboard']
 let tempUserData = {} 
 let currentUser = null 
@@ -9,7 +9,7 @@ let selectedAction = ''
 let myLocation = null
 let isModelLoaded = false 
 
-// --- Load AI Models ---
+// --- 1. Load AI Models ---
 Promise.all([
     faceapi.nets.ssdMobilenetv1.loadFromUri('./models'),
     faceapi.nets.faceLandmark68Net.loadFromUri('./models'),
@@ -17,46 +17,43 @@ Promise.all([
 ]).then(() => {
     console.log("AI Models Loaded")
     isModelLoaded = true
-    
     const statusText = document.getElementById('ai-loading-status')
     const btn = document.getElementById('btn-start-reg-scan')
-    if(statusText) {
-        statusText.innerText = "✅ AI พร้อมทำงานแล้ว"
-        statusText.style.color = "#34d399"
-    }
-    if(btn) {
-        btn.disabled = false
-        btn.innerHTML = "🚀 เริ่มสแกนใบหน้า"
-        btn.style.opacity = "1"
-        btn.style.cursor = "pointer"
-    }
+    if(statusText) { statusText.innerText = "พร้อมทำงานแล้ว"; statusText.style.color = "var(--success)"; }
+    if(btn) { btn.disabled = false; btn.innerHTML = "เริ่มสแกนใบหน้า"; btn.style.opacity = "1"; }
 })
 
-// --- Popup ---
-function showPopup(type, title, message) {
+// --- Helper: Popup ---
+window.showPopup = function(type, title, message) {
     const popup = document.getElementById('custom-popup')
     const box = popup.querySelector('.popup-content-box')
     const icon = document.getElementById('popup-icon')
+    
+    // ล้าง class เก่าออกให้หมดก่อน
     box.className = 'popup-content-box'
     
-    if (type === 'success') {
-        box.classList.add('popup-success')
-        icon.innerText = '✅'
-    } else {
-        box.classList.add('popup-error')
-        icon.innerText = '❌'
+    if (type === 'success') { 
+        box.classList.add('popup-success'); 
+        icon.innerText = '✅'; 
+    } else if (type === 'loading') { 
+        box.classList.add('popup-loading'); 
+        icon.innerText = '⏳'; 
+    } else { 
+        box.classList.add('popup-error'); 
+        icon.innerText = '❌'; 
     }
+    
     document.getElementById('popup-title').innerText = title
     document.getElementById('popup-message').innerText = message
     popup.classList.add('active')
 }
 
-function closePopup() {
+window.closePopup = function() {
     document.getElementById('custom-popup').classList.remove('active')
 }
 
 // --- Navigation ---
-function goToPage(pageId) {
+window.goToPage = function(pageId) {
     pages.forEach(p => document.getElementById(p).classList.remove('active'))
     document.getElementById(pageId).classList.add('active')
     stopCamera() 
@@ -69,120 +66,136 @@ function goToPage(pageId) {
         document.getElementById('regUsername').value = ''
         document.getElementById('regPassword').value = ''
     }
-
-    if (pageId === 'page-register-data') {
-        document.getElementById('regFirstName').value = ''
-        document.getElementById('regLastName').value = ''
-        document.getElementById('regUsername').value = ''
-        document.getElementById('regPassword').value = ''
-    }
 }
 
 function stopCamera() {
     document.querySelectorAll('video').forEach(v => {
         if(v.srcObject) {
-            v.srcObject.getTracks().forEach(track => track.stop()) 
-            v.srcObject = null 
+            v.srcObject.getTracks().forEach(track => track.stop())
+            v.srcObject = null
         }
     })
 }
 
-// --- Login ---
-function handleLogin() {
+function parseDescriptors(data) {
+    if (!data) return [];
+    if (typeof data === 'string') return JSON.parse(data);
+    return data;
+}
+
+// --- 2. Login ---
+window.handleLogin = async function() {
     const userIn = document.getElementById('loginUsername').value
     const passIn = document.getElementById('loginPassword').value
     
-    const users = JSON.parse(localStorage.getItem('users_db')) || []
-    const user = users.find(u => u.username === userIn && u.password === passIn)
+    showPopup('loading', 'กรุณารอ', 'กำลังตรวจสอบข้อมูลกับ Server...')
 
-    if (user) {
-        currentUser = user
-        loadFaceMatcher() 
-        document.getElementById('welcome-msg').innerText = `สวัสดี: ${user.firstName}`
+    try {
+        if(!window.db) throw "Firebase not ready"
         
-        if (navigator.geolocation) {
-            navigator.geolocation.watchPosition(pos => {
-                myLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude }
-            })
+        const q = window.query(window.collection(window.db, "users"), window.where("username", "==", userIn))
+        const querySnapshot = await window.getDocs(q)
+        
+        let foundUser = null
+        querySnapshot.forEach((doc) => {
+            const data = doc.data()
+            if (data.password === passIn) foundUser = data
+        })
+
+        if (foundUser) {
+            currentUser = foundUser
+            await loadFaceMatcher() 
+            
+            if (navigator.geolocation) {
+                navigator.geolocation.watchPosition(pos => {
+                    myLocation = { lat: pos.coords.latitude, lon: pos.coords.longitude }
+                })
+            }
+            
+            closePopup()
+            showPopup('success', 'สำเร็จ', `ยินดีต้อนรับคุณ ${foundUser.firstName}`)
+            goToPage('page-dashboard')
+            document.getElementById('welcome-msg').innerText = `สวัสดี: ${foundUser.firstName} ${foundUser.lastName}`
+        } else {
+            showPopup('error', 'ไม่สำเร็จ', 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
         }
-        
-        showPopup('success', 'เข้าสู่ระบบสำเร็จ', `ยินดีต้อนรับคุณ ${user.firstName}`)
-        goToPage('page-dashboard')
-    } else {
-        showPopup('error', 'Login Failed', 'ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง')
+    } catch (e) {
+        console.error(e)
+        showPopup('error', 'Error', 'เชื่อมต่อฐานข้อมูลไม่ได้ หรือ ขาดการเชื่อมต่ออินเทอร์เน็ต')
     }
 }
 
-function handleLogout() {
+window.handleLogout = function() {
     currentUser = null
     selectedAction = ''
     goToPage('page-login')
 }
 
-// --- Register Data & GPS ---
-function validateAndGoToScan() {
+// --- 3. Register Data ---
+window.validateAndGoToScan = async function() {
     const fname = document.getElementById('regFirstName').value
     const lname = document.getElementById('regLastName').value
     const user = document.getElementById('regUsername').value
     const pass = document.getElementById('regPassword').value
 
-    if (!fname || !lname || !user || !pass) return showPopup('error', 'ข้อมูลไม่ครบ', 'กรุณากรอกข้อมูลให้ครบ')
-
-    const users = JSON.parse(localStorage.getItem('users_db')) || []
-    if (users.find(u => u.username === user)) return showPopup('error', 'ซ้ำ', 'รหัสพนักงานนี้มีในระบบแล้ว')
+    if (!fname || !lname || !user || !pass) return showPopup('error', 'ข้อมูลไม่ครบ', 'กรุณากรอกให้ครบ')
 
     const btn = document.querySelector("button[onclick='validateAndGoToScan()']") 
-    if(btn) {
-        btn.innerHTML = "⏳ กำลังขอพิกัด GPS... (รอสักครู่)" 
-        btn.disabled = true
-    }
+    if(btn) { btn.innerHTML = "⏳ ตรวจสอบ User..."; btn.disabled = true; }
 
-    const gpsOptions = { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 };
+    try {
+        const q = window.query(window.collection(window.db, "users"), window.where("username", "==", user))
+        const querySnapshot = await window.getDocs(q)
+        
+        if (!querySnapshot.empty) {
+            if(btn) { btn.innerHTML = "บันทึกใบหน้า"; btn.disabled = false; }
+            return showPopup('error', 'ซ้ำ', 'รหัสพนักงานนี้มีในระบบแล้ว')
+        }
 
-    if (navigator.geolocation) {
+        if(btn) { btn.innerHTML = "⏳ ขอพิกัด GPS..." }
+        const gpsOptions = { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 };
+
         navigator.geolocation.getCurrentPosition(position => {
             tempUserData = { 
                 firstName: fname, lastName: lname, username: user, password: pass, 
                 descriptors: [], 
-                officeLat: position.coords.latitude, 
-                officeLon: position.coords.longitude
+                officeLat: position.coords.latitude, officeLon: position.coords.longitude
             }
             
             if(btn) { btn.innerHTML = "บันทึกใบหน้า"; btn.disabled = false; }
-
             resetRegisterUI() 
             goToPage('page-register-scan')
 
         }, (error) => {
-            let msg = "GPS Error"
-            if(error.code === 1) msg = "ถูกปฏิเสธ (Permission Denied)"
-            if(error.code === 3) msg = "หมดเวลา (Timeout) - ลองขยับจุด หรือเปิด Wi-Fi"
-            showPopup('error', 'GPS Error', msg)
+            showPopup('error', 'GPS Error', 'หาพิกัดไม่ได้ (กรุณาเปิด GPS/Wi-Fi)')
             if(btn) { btn.innerHTML = "ลองใหม่"; btn.disabled = false; }
         }, gpsOptions)
-    } else {
-        showPopup('error', 'Browser Error', 'ไม่รองรับ GPS')
+
+    } catch (e) {
+        console.error(e)
+        showPopup('error', 'Error', 'เกิดข้อผิดพลาดในการเชื่อมต่อ')
+        if(btn) btn.disabled = false;
     }
 }
 
-// --- Register Scan ---
+// --- 4. Register Scan ---
 let collectedDescriptors = []
 let scanProgress = 0
 
 async function startCamera(videoId) {
     const video = document.getElementById(videoId)
-    if(video.srcObject) video.srcObject.getTracks().forEach(track => track.stop())
+    stopCamera() 
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { facingMode: 'user' } 
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } } 
         })
         video.srcObject = stream
         video.onloadedmetadata = () => { video.play() }
     } catch (err) { showPopup('error', 'Camera', 'เปิดกล้องไม่ได้') }
 }
 
-async function startFaceScanProcess() {
-    if (!isModelLoaded) return showPopup('error', 'รอสักครู่', 'AI กำลังโหลด...')
+window.startFaceScanProcess = async function() {
+    if (!isModelLoaded) return showPopup('error', 'รอสักครู่', 'กำลังโหลด...')
     
     const btn = document.getElementById('btn-start-reg-scan')
     const video = document.getElementById('video-scan')
@@ -213,39 +226,51 @@ async function startFaceScanProcess() {
             if (detection) {
                 scanProgress += 20 
                 percentText.innerText = `${scanProgress}%`
-                ring.style.borderColor = "#00f7ff"
+                ring.style.borderColor = "var(--primary)"
                 collectedDescriptors.push(Array.from(detection.descriptor))
                 if (scanProgress >= 100) finishRegistration()
             } else {
-                ring.style.borderColor = "#ef4444"
+                ring.style.borderColor = "var(--error)"
             }
         } catch(e) {}
     }, 800)
 }
 
-function finishRegistration() {
+async function finishRegistration() {
     clearInterval(scanInterval)
     isScanning = false
     
-    const duplicateUser = checkDuplicateFace(collectedDescriptors)
+    showPopup('loading', 'รอสักครู่', 'กำลังบันทึกลงฐานข้อมูล...')
+    
+    const duplicateUser = await checkDuplicateFace(collectedDescriptors)
     if (duplicateUser) {
+        closePopup()
         showPopup('error', 'ไม่ผ่าน', `ใบหน้านี้มีในระบบแล้ว (${duplicateUser})`)
         resetRegisterUI()
         goToPage('page-register-data')
         return
     }
 
-    const users = JSON.parse(localStorage.getItem('users_db')) || []
-    const finalUser = { ...tempUserData, descriptors: collectedDescriptors }
-    users.push(finalUser)
-    localStorage.setItem('users_db', JSON.stringify(users))
 
-    showPopup('success', 'สำเร็จ', 'ลงทะเบียนเรียบร้อย')
-    resetRegisterUI()
-    goToPage('page-login')
+    const finalUser = { 
+        ...tempUserData, 
+        descriptors: JSON.stringify(collectedDescriptors) 
+    }
+
+    try {
+        await window.addDoc(window.collection(window.db, "users"), finalUser)
+        
+        closePopup()
+        showPopup('success', 'สำเร็จ', 'ลงทะเบียนเรียบร้อย')
+        resetRegisterUI()
+        goToPage('page-login')
+    } catch (e) {
+        console.error(e)
+        showPopup('error', 'Error', `บันทึกไม่สำเร็จ: ${e.message}`)
+    }
 }
 
-function stopScanAndBack() {
+window.stopScanAndBack = function() {
     resetRegisterUI()
     goToPage('page-register-data')
 }
@@ -262,43 +287,50 @@ function resetRegisterUI() {
     const btn = document.getElementById('btn-start-reg-scan')
 
     if(percentText) percentText.innerText = "0%"
-    if(ring) ring.style.borderColor = "rgba(255,255,255,0.1)"
+    if(ring) ring.style.borderColor = "rgba(255,255,255,0.3)"
     if(ui) ui.classList.add('hidden')
-    
-    if(btn) {
-        btn.style.display = 'inline-block' 
-        btn.disabled = false
-        btn.innerHTML = "🚀 เริ่มสแกนใบหน้า"
-    }
+    if(btn) { btn.style.display = 'inline-block'; btn.disabled = false; btn.innerHTML = "เริ่มสแกนใบหน้า"; }
 }
 
-// --- Attendance & Check Duplicate Face ---
-function checkDuplicateFace(newFaceDescriptors) {
-    const users = JSON.parse(localStorage.getItem('users_db')) || []
-    const validUsers = users.filter(u => u.descriptors && u.descriptors.length > 0)
+// --- 5. Cloud Face Matching  ---
+async function checkDuplicateFace(newFaceDescriptors) {
+    try {
+        const querySnapshot = await window.getDocs(window.collection(window.db, "users"))
+        const users = []
+        querySnapshot.forEach((doc) => users.push(doc.data()))
 
-    if (validUsers.length === 0) return null
-    console.log("🔍 กำลังตรวจซ้ำกับพนักงานจำนวน:", validUsers.length, "คน")
-    console.log("รายชื่อ:", validUsers.map(u => u.username))
-    const labeledDescriptors = validUsers.map(user => {
-        return new faceapi.LabeledFaceDescriptors(user.username, user.descriptors.map(d => new Float32Array(d)))
-    })
+        if (users.length === 0) return null
 
-    const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5) 
+        const labeledDescriptors = users.map(user => {
+            const descriptors = parseDescriptors(user.descriptors);
+            return new faceapi.LabeledFaceDescriptors(user.username, descriptors.map(d => new Float32Array(d)))
+        })
+        const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5)
 
-    for (const descriptor of newFaceDescriptors) {
-        const bestMatch = faceMatcher.findBestMatch(new Float32Array(descriptor))
-        if (bestMatch.label !== 'unknown') {
-            console.log(`🚨 เจอหน้าซ้ำ! ตรงกับ: ${bestMatch.label} (Distance: ${bestMatch.distance.toFixed(2)})`)
-            return bestMatch.label
+        for (const descriptor of newFaceDescriptors) {
+            const bestMatch = faceMatcher.findBestMatch(new Float32Array(descriptor))
+            if (bestMatch.label !== 'unknown') return bestMatch.label
         }
-    }
-
-    console.log("✅ ไม่พบหน้าซ้ำ")
-    return null
+        return null
+    } catch (e) { return null }
 }
 
-function openScanner(action) {
+async function loadFaceMatcher() {
+    try {
+        const querySnapshot = await window.getDocs(window.collection(window.db, "users"))
+        const users = []
+        querySnapshot.forEach((doc) => users.push(doc.data()))
+
+        const labeledDescriptors = users.map(user => {
+            const descriptors = parseDescriptors(user.descriptors);
+            return new faceapi.LabeledFaceDescriptors(user.username, descriptors.map(d => new Float32Array(d)))
+        })
+        if (labeledDescriptors.length > 0) faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5)
+    } catch(e) { console.error("Error loading matcher", e) }
+}
+
+// --- 6. Attendance ---
+window.openScanner = function(action) {
     selectedAction = action
     document.getElementById('scan-title').innerText = `ยืนยัน: ${action}`
     document.getElementById('camera-placeholder').classList.remove('hidden')
@@ -307,13 +339,17 @@ function openScanner(action) {
     document.getElementById('modal-scanner').classList.add('active')
 }
 
-async function startAuthCamera() {
+window.startAuthCamera = async function() {
     const video = document.getElementById('video-auth')
     const placeholder = document.getElementById('camera-placeholder')
     const scanBtn = document.getElementById('btn-scan-confirm')
 
+    stopCamera()
+
     try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' } })
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 24 } } 
+        })
         video.srcObject = stream
         video.onloadedmetadata = () => { video.play() }
 
@@ -323,12 +359,12 @@ async function startAuthCamera() {
     } catch (err) { showPopup('error', 'Camera', 'เปิดกล้องไม่ได้') }
 }
 
-function closeScanner() {
+window.closeScanner = function() {
     document.getElementById('modal-scanner').classList.remove('active')
     stopCamera()
 }
 
-async function performCheckIn() {
+window.performCheckIn = async function() {
     if (!faceMatcher) return showPopup('error', 'Error', 'AI ไม่พร้อม')
     if (!myLocation) return showPopup('error', 'GPS', 'กำลังหาพิกัด...')
     
@@ -341,7 +377,7 @@ async function performCheckIn() {
             const dist = getDistanceFromLatLonInKm(myLocation.lat, myLocation.lon, currentUser.officeLat, currentUser.officeLon) * 1000
             
             if (dist <= 200) {
-                saveAttendanceLog(selectedAction)
+                await saveAttendanceLog(selectedAction)
                 showPopup('success', 'สำเร็จ', `${selectedAction}\n(ห่าง ${dist.toFixed(0)} ม.)`)
                 closeScanner()
             } else {
@@ -355,7 +391,7 @@ async function performCheckIn() {
     }
 }
 
-function saveAttendanceLog(action) {
+async function saveAttendanceLog(action) {
     const now = new Date()
     let status = "ปกติ"
     const hour = now.getHours()
@@ -369,37 +405,45 @@ function saveAttendanceLog(action) {
         fullName: `${currentUser.firstName} ${currentUser.lastName}`,
         date: now.toLocaleDateString('th-TH'),
         time: now.toLocaleTimeString('th-TH'),
-        action: action,
-        status: status,
-        timestamp: now.getTime()
+        action: action, status: status, timestamp: now.getTime()
     }
 
-    let logs = JSON.parse(localStorage.getItem('attendance_logs')) || []
-    logs.unshift(newLog)
-    localStorage.setItem('attendance_logs', JSON.stringify(logs))
+    try {
+        await window.addDoc(window.collection(window.db, "logs"), newLog)
+    } catch (e) { console.error("Save log error", e) }
 }
 
-function openHistory() {
+// --- 7. History ---
+window.openHistory = async function() {
     document.getElementById('modal-history').classList.add('active')
     const tbody = document.getElementById('history-body')
-    tbody.innerHTML = ''
-    const allLogs = JSON.parse(localStorage.getItem('attendance_logs')) || []
-    const myLogs = allLogs.filter(log => log.username === currentUser.username)
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">⏳ กำลังโหลดข้อมูล...</td></tr>'
 
-    if (myLogs.length === 0) { tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;">ไม่พบประวัติ</td></tr>`; return; }
+    try {
+        const q = window.query(
+            window.collection(window.db, "logs"), 
+            window.where("username", "==", currentUser.username),
+            window.orderBy("timestamp", "desc")
+        )
+        
+        const querySnapshot = await window.getDocs(q)
+        tbody.innerHTML = ''
+        
+        if (querySnapshot.empty) {
+             tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;">ไม่พบประวัติ</td></tr>`
+             return
+        }
 
-    myLogs.forEach(log => {
-        let badgeClass = log.status === 'สาย' ? 'badge-late' : 'badge-ontime'
-        tbody.innerHTML += `<tr><td>${log.date}<br><small>${log.time}</small></td><td>${log.action}</td><td><span class="badge ${badgeClass}">${log.status}</span></td></tr>`
-    })
-}
+        querySnapshot.forEach((doc) => {
+            const log = doc.data()
+            let badgeClass = log.status === 'สาย' ? 'badge-late' : 'badge-ontime'
+            tbody.innerHTML += `<tr><td>${log.date}<br><small>${log.time}</small></td><td>${log.action}</td><td><span class="badge ${badgeClass}">${log.status}</span></td></tr>`
+        })
 
-function loadFaceMatcher() {
-    const users = JSON.parse(localStorage.getItem('users_db')) || []
-    const labeledDescriptors = users.map(user => {
-        return new faceapi.LabeledFaceDescriptors(user.username, user.descriptors.map(d => new Float32Array(d)))
-    })
-    if (labeledDescriptors.length > 0) faceMatcher = new faceapi.FaceMatcher(labeledDescriptors, 0.5)
+    } catch (e) {
+        console.error(e)
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align:center; color:red;">โหลดไม่สำเร็จ (เช็ค Console)</td></tr>`
+    }
 }
 
 function getDistanceFromLatLonInKm(lat1, lon1, lat2, lon2) {
