@@ -1,4 +1,4 @@
-// --- System Variables ---
+// System Variables ---
 const pages = ['page-login', 'page-register-data', 'page-register-scan', 'page-dashboard']
 let tempUserData = {} 
 let currentUser = null 
@@ -9,7 +9,7 @@ let selectedAction = ''
 let myLocation = null
 let isModelLoaded = false 
 
-// --- 1. Load AI Models ---
+// Load AI Models ---
 Promise.all([
     faceapi.nets.ssdMobilenetv1.loadFromUri('./models'),
     faceapi.nets.faceLandmark68Net.loadFromUri('./models'),
@@ -23,13 +23,12 @@ Promise.all([
     if(btn) { btn.disabled = false; btn.innerHTML = "เริ่มสแกนใบหน้า"; btn.style.opacity = "1"; }
 })
 
-// --- Helper: Popup ---
+// --- Popup ---
 window.showPopup = function(type, title, message) {
     const popup = document.getElementById('custom-popup')
     const box = popup.querySelector('.popup-content-box')
     const icon = document.getElementById('popup-icon')
     
-    // ล้าง class เก่าออกให้หมดก่อน
     box.className = 'popup-content-box'
     
     if (type === 'success') { 
@@ -83,7 +82,7 @@ function parseDescriptors(data) {
     return data;
 }
 
-// --- 2. Login ---
+// --- Login ---
 window.handleLogin = async function() {
     const userIn = document.getElementById('loginUsername').value
     const passIn = document.getElementById('loginPassword').value
@@ -98,9 +97,12 @@ window.handleLogin = async function() {
         
         let foundUser = null
         querySnapshot.forEach((doc) => {
-            const data = doc.data()
-            if (data.password === passIn) foundUser = data
-        })
+    const data = doc.data()
+
+    if (data.password === passIn) {
+        foundUser = { ...data, docId: doc.id } 
+    }
+})
 
         if (foundUser) {
             currentUser = foundUser
@@ -131,7 +133,7 @@ window.handleLogout = function() {
     goToPage('page-login')
 }
 
-// --- 3. Register Data ---
+// --- Register Data ---
 window.validateAndGoToScan = async function() {
     const fname = document.getElementById('regFirstName').value
     const lname = document.getElementById('regLastName').value
@@ -178,7 +180,7 @@ window.validateAndGoToScan = async function() {
     }
 }
 
-// --- 4. Register Scan ---
+// --- Register Scan ---
 let collectedDescriptors = []
 let scanProgress = 0
 
@@ -292,7 +294,7 @@ function resetRegisterUI() {
     if(btn) { btn.style.display = 'inline-block'; btn.disabled = false; btn.innerHTML = "เริ่มสแกนใบหน้า"; }
 }
 
-// --- 5. Cloud Face Matching  ---
+// --- Cloud Face Matching  ---
 async function checkDuplicateFace(newFaceDescriptors) {
     try {
         const querySnapshot = await window.getDocs(window.collection(window.db, "users"))
@@ -329,7 +331,7 @@ async function loadFaceMatcher() {
     } catch(e) { console.error("Error loading matcher", e) }
 }
 
-// --- 6. Attendance ---
+// --- Attendance ---
 window.openScanner = function(action) {
     selectedAction = action
     document.getElementById('scan-title').innerText = `ยืนยัน: ${action}`
@@ -409,11 +411,12 @@ async function saveAttendanceLog(action) {
     }
 
     try {
-        await window.addDoc(window.collection(window.db, "logs"), newLog)
+        const userLogsRef = window.collection(window.db, "users", currentUser.docId, "logs");
+        await window.addDoc(userLogsRef, newLog)
     } catch (e) { console.error("Save log error", e) }
 }
 
-// --- 7. History ---
+// --- History ---
 window.openHistory = async function() {
     document.getElementById('modal-history').classList.add('active')
     const tbody = document.getElementById('history-body')
@@ -421,8 +424,7 @@ window.openHistory = async function() {
 
     try {
         const q = window.query(
-            window.collection(window.db, "logs"), 
-            window.where("username", "==", currentUser.username),
+            window.collection(window.db, "users", currentUser.docId, "logs"), 
             window.orderBy("timestamp", "desc")
         )
         
