@@ -207,5 +207,8 @@
         
         .popup-success h3 { color: var(--success); margin: 0; }
         .popup-error h3 { color: var(--error); margin: 0; }
+        .popup-loading { border-color: #facc15; } 
+        .popup-loading h3 { color: #facc15; margin: 0; }
+        .popup-loading .popup-icon { animation: spin 1s linear infinite; } 
         
         .hidden { display: none !important; }
