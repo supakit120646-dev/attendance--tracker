@@ -90,19 +90,18 @@ window.handleLogin = async function() {
     showPopup('loading', 'กรุณารอ', 'กำลังตรวจสอบข้อมูลกับ Server...')
 
     try {
-        if(!window.db) throw "Firebase not ready"
+        if(!window.supabase) throw "Supabase not ready"
         
-        const q = window.query(window.collection(window.db, "users"), window.where("username", "==", userIn))
-        const querySnapshot = await window.getDocs(q)
-        
-        let foundUser = null
-        querySnapshot.forEach((doc) => {
-    const data = doc.data()
+        // ดึงข้อมูลผู้ใช้จากตาราง users ที่มี username ตรงกัน
+        const { data: users, error } = await window.supabase
+            .from('users')
+            .select('*')
+            .eq('username', userIn)
 
-    if (data.password === passIn) {
-        foundUser = { ...data, docId: doc.id } 
-    }
-})
+        if (error) throw error
+
+        // ตรวจสอบรหัสผ่าน
+        let foundUser = users && users.length > 0 && users[0].password === passIn ? users[0] : null
 
         if (foundUser) {
             currentUser = foundUser
@@ -145,14 +144,18 @@ window.validateAndGoToScan = async function() {
     const btn = document.querySelector("button[onclick='validateAndGoToScan()']") 
     if(btn) { btn.innerHTML = "⏳ ตรวจสอบ User..."; btn.disabled = true; }
 
-    try {
-        const q = window.query(window.collection(window.db, "users"), window.where("username", "==", user))
-        const querySnapshot = await window.getDocs(q)
-        
-        if (!querySnapshot.empty) {
-            if(btn) { btn.innerHTML = "บันทึกใบหน้า"; btn.disabled = false; }
-            return showPopup('error', 'ซ้ำ', 'รหัสพนักงานนี้มีในระบบแล้ว')
-        }
+   try {
+    const { data, error } = await window.supabase
+        .from('users')
+        .select('username')
+        .eq('username', user)
+
+    if (error) throw error
+    
+    if (data && data.length > 0) {
+        if(btn) { btn.innerHTML = "บันทึกใบหน้า"; btn.disabled = false; }
+        return showPopup('error', 'ซ้ำ', 'รหัสพนักงานนี้มีในระบบแล้ว')
+    }
 
         if(btn) { btn.innerHTML = "⏳ ขอพิกัด GPS..." }
         const gpsOptions = { enableHighAccuracy: true, timeout: 30000, maximumAge: 60000 };
@@ -259,17 +262,22 @@ async function finishRegistration() {
         descriptors: JSON.stringify(collectedDescriptors) 
     }
 
-    try {
-        await window.addDoc(window.collection(window.db, "users"), finalUser)
-        
-        closePopup()
-        showPopup('success', 'สำเร็จ', 'ลงทะเบียนเรียบร้อย')
-        resetRegisterUI()
-        goToPage('page-login')
-    } catch (e) {
-        console.error(e)
-        showPopup('error', 'Error', `บันทึกไม่สำเร็จ: ${e.message}`)
-    }
+    
+try {
+    const { error } = await window.supabase
+        .from('users')
+        .insert([finalUser])
+
+    if (error) throw error
+    
+    closePopup()
+    showPopup('success', 'สำเร็จ', 'ลงทะเบียนเรียบร้อย')
+    resetRegisterUI()
+    goToPage('page-login')
+} catch (e) {
+    console.error(e)
+    showPopup('error', 'Error', `บันทึกไม่สำเร็จ: ${e.message}`)
+}
 }
 
 window.stopScanAndBack = function() {
@@ -297,11 +305,8 @@ function resetRegisterUI() {
 // --- Cloud Face Matching  ---
 async function checkDuplicateFace(newFaceDescriptors) {
     try {
-        const querySnapshot = await window.getDocs(window.collection(window.db, "users"))
-        const users = []
-        querySnapshot.forEach((doc) => users.push(doc.data()))
-
-        if (users.length === 0) return null
+        const { data: users, error } = await window.supabase.from('users').select('*')
+        if (error || !users || users.length === 0) return null
 
         const labeledDescriptors = users.map(user => {
             const descriptors = parseDescriptors(user.descriptors);
@@ -319,9 +324,8 @@ async function checkDuplicateFace(newFaceDescriptors) {
 
 async function loadFaceMatcher() {
     try {
-        const querySnapshot = await window.getDocs(window.collection(window.db, "users"))
-        const users = []
-        querySnapshot.forEach((doc) => users.push(doc.data()))
+        const { data: users, error } = await window.supabase.from('users').select('*')
+        if (error || !users) return
 
         const labeledDescriptors = users.map(user => {
             const descriptors = parseDescriptors(user.descriptors);
@@ -407,12 +411,16 @@ async function saveAttendanceLog(action) {
         fullName: `${currentUser.firstName} ${currentUser.lastName}`,
         date: now.toLocaleDateString('th-TH'),
         time: now.toLocaleTimeString('th-TH'),
-        action: action, status: status, timestamp: now.getTime()
+        action: action, 
+        status: status, 
+        timestamp: now.getTime()
     }
 
     try {
-        const userLogsRef = window.collection(window.db, "users", currentUser.docId, "logs");
-        await window.addDoc(userLogsRef, newLog)
+        const { error } = await window.supabase
+            .from('logs')
+            .insert([newLog])
+        if (error) throw error
     } catch (e) { console.error("Save log error", e) }
 }
 
@@ -423,21 +431,22 @@ window.openHistory = async function() {
     tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;">⏳ กำลังโหลดข้อมูล...</td></tr>'
 
     try {
-        const q = window.query(
-            window.collection(window.db, "users", currentUser.docId, "logs"), 
-            window.orderBy("timestamp", "desc")
-        )
-        
-        const querySnapshot = await window.getDocs(q)
+        // ดึงประวัติจากตาราง logs เรียงตามเวลาล่าสุด
+        const { data: logs, error } = await window.supabase
+            .from('logs')
+            .select('*')
+            .eq('username', currentUser.username)
+            .order('timestamp', { ascending: false })
+
+        if (error) throw error
         tbody.innerHTML = ''
         
-        if (querySnapshot.empty) {
+        if (!logs || logs.length === 0) {
              tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;">ไม่พบประวัติ</td></tr>`
              return
         }
 
-        querySnapshot.forEach((doc) => {
-            const log = doc.data()
+        logs.forEach((log) => {
             let badgeClass = log.status === 'สาย' ? 'badge-late' : 'badge-ontime'
             tbody.innerHTML += `<tr><td>${log.date}<br><small>${log.time}</small></td><td>${log.action}</td><td><span class="badge ${badgeClass}">${log.status}</span></td></tr>`
         })
