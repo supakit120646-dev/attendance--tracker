@@ -118,33 +118,13 @@
         </div>
     </div>
 
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-        import { getFirestore, collection, addDoc, getDocs, query, where, orderBy } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
-
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyD5EtyTg2hM6HFJQ3--3wCREG_QEEGq8Pk",
-            authDomain: "attendance-tracker-db-c900c.firebaseapp.com",
-            projectId: "attendance-tracker-db-c900c",
-            storageBucket: "attendance-tracker-db-c900c.firebasestorage.app",
-            messagingSenderId: "808995545998",
-            appId: "1:808995545998:web:48045553ee7c18f0337adf"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-
-        window.db = db;
-        window.collection = collection;
-        window.addDoc = addDoc;
-        window.getDocs = getDocs;
-        window.query = query;
-        window.where = where;
-        window.orderBy = orderBy;
-        
-        console.log("Firebase Initialized");
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+    const SUPABASE_URL = 'https://your-project-url.supabase.co'
+    const SUPABASE_KEY = 'your-anon-key'
+    
+    window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+</script>
 
     <script type="module" src="script.js"></script>
 
